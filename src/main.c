@@ -136,6 +136,28 @@ int sock_write(void *sock,void *buf,int size)
 	}
 	return ret;
 }
+void sock_clean(void *sock)
+{
+	struct fd_set sfd;
+	long timeout[2];
+	char buf[4096];
+	while(1)
+	{
+		timeout[0]=10;
+		timeout[1]=0;
+		sfd.nfds=1;
+		sfd.pad=0;
+		sfd.sock[0]=sock;
+		if(select(1,&sfd,NULL,&sfd,timeout)!=1)
+		{
+			return;
+		}
+		if(recv(sock,buf,4096,0)<=0)
+		{
+			return;
+		}
+	}
+}
 
 #include "server.c"
 void _T_service(void); // SCC uses a different calling convention

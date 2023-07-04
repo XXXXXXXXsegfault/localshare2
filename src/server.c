@@ -672,6 +672,10 @@ int T_service(void *sock)
 		{
 			send_page_500(sock);
 		}
+		if(status!=3)
+		{
+			sock_clean(sock);
+		}
 		closesocket(sock);
 		return 0;
 	}
@@ -688,6 +692,7 @@ int T_service(void *sock)
 		send_page_400(sock);
 	}
 	free(header);
+	sock_clean(sock);
 	closesocket(sock);
 	return 0;
 }
