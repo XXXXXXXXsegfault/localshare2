@@ -1,4 +1,5 @@
 #include "windef.c"
+asm ".cui"
 asm ".entry"
 asm "push %rbp"
 asm "mov %rsp,%rbp"
@@ -775,7 +776,7 @@ asm "sub $8,%rsp"
 asm "push %r8"
 asm "push %rdx"
 asm "push %rcx"
-asm ".dllcall \"msvcrt.dll\" \"fseek\""
+asm ".dllcall \"msvcrt.dll\" \"_fseeki64\""
 asm "add $32,%rsp"
 asm "pop %r11"
 asm "pop %r10"
@@ -784,8 +785,8 @@ asm "pop %r8"
 asm "mov %rbp,%rsp"
 asm "pop %rbp"
 asm "ret"
-long ftell(void *fp);
-asm "@ftell"
+long fgetpos(void *fp,unsigned long *pos);
+asm "@fgetpos"
 asm "push %rbp"
 asm "mov %rsp,%rbp"
 asm "and $0xf0,%spl"
@@ -794,9 +795,11 @@ asm "push %r9"
 asm "push %r10"
 asm "push %r11"
 asm "mov 16(%rbp),%rcx"
-asm "sub $24,%rsp"
+asm "mov 24(%rbp),%rdx"
+asm "sub $16,%rsp"
 asm "push %rcx"
-asm ".dllcall \"msvcrt.dll\" \"ftell\""
+asm "push %rdx"
+asm ".dllcall \"msvcrt.dll\" \"fgetpos\""
 asm "add $32,%rsp"
 asm "pop %r11"
 asm "pop %r10"
@@ -805,6 +808,13 @@ asm "pop %r8"
 asm "mov %rbp,%rsp"
 asm "pop %rbp"
 asm "ret"
+long ftell(void *fp)
+{
+	long ret;
+	ret=0;
+	fgetpos(fp,&ret);
+	return ret;
+}
 void Sleep(int msec);
 asm "@Sleep"
 asm "push %rbp"

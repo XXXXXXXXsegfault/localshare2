@@ -2,13 +2,12 @@
 #include "../include/mem.c"
 #include "../include/iformat.c"
 char server_root[16384];
-char upload_password[512];
 void *server_sock;
 void fatal(char *str)
 {
 	puts("Error: ");
 	puts(str);
-	puts("\nPress a key to continue\n");
+	puts("\nPress any key to continue\n");
 	getch();
 	exit(1);
 }
@@ -201,8 +200,6 @@ void server_init(void)
 	}
 	server_root[strlen(server_root)-2]=0;
 	FindClose(fh);
-	puts("Upload password (optional): ");
-	buf_gets(upload_password,512);
 	puts("Server address (format: 127.0.0.1:80): ");
 	buf_gets(addr_string,32);
 	if(string_to_addr(addr_string,&addr))
@@ -237,7 +234,7 @@ void server_init(void)
 int main(void)
 {
 	server_init();
-	puts("Press a key to exit\n");
+	puts("Press any key to exit\n");
 	getch();
 	return 0;
 }

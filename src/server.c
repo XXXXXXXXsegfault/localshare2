@@ -231,7 +231,7 @@ void handle_get(void *sock,char *header)
 //<html><head><title>[LocalShare] ...</title></head>\n
 //<body><h1>[LocalShare] ...</h1>\n
 //<form action="/$PUTF" enctype="multipart/form-data" method="post">\n
-//Password <input type="password" name="PW"/><br/><input type="file" name="F"/><br/>Upload To <input type="text" name="FP"/><br/><input type="submit" name="SM" value="Upload"/><br/></form>\n
+//<input type="file" name="F"/><br/>Upload To <input type="text" name="FP"/><br/><input type="submit" name="SM" value="Upload"/><br/></form>\n
 //<p><a href=".../..">PARENT</a></p>\n
 //...
 //</body></html>\n
@@ -240,7 +240,7 @@ void handle_get(void *sock,char *header)
 //<p>[DIR ] <a href=".../dir">dir</a></p>\n
 		head=NULL;
 		rpath[strlen(rpath)-2]=0;
-		size=48+29+67+187+32+15+3*strlen(rpath);
+		size=48+29+67+139+32+15+3*strlen(rpath);
 		if(rpath[1]==0)
 		{
 			--size;
@@ -300,7 +300,7 @@ void handle_get(void *sock,char *header)
 		sock_write(sock,buf,strlen(buf));
 		sock_write(sock,rpath,strlen(rpath));
 		strcpy(buf,"</h1>\n<form action=\"/$PUTF\" enctype=\"multipart/form-data\" method=\"post\">\n\
-Password <input type=\"password\" name=\"PW\"/><br/><input type=\"file\" name=\"F\"/><br/>Upload To <input type=\"text\" name=\"FP\"/><br/>\
+<input type=\"file\" name=\"F\"/><br/>Upload To <input type=\"text\" name=\"FP\"/><br/>\
 <input type=\"submit\" name=\"SM\" value=\"Upload\"/><br/></form>\n\
 <p><a href=\"");
 		sock_write(sock,buf,strlen(buf));
@@ -509,7 +509,7 @@ void handle_post(void *sock,char *header)
 		}
 		if(i==-1)
 		{
-			if(stage!=2)
+			if(stage!=1)
 			{
 				ret=1;
 				break;
@@ -528,14 +528,14 @@ void handle_post(void *sock,char *header)
 		}
 		else
 		{
-			if(stage==2)
+			if(stage==1)
 			{
 				fwrite(buf,i-4,1,fp);
 			}
 			memmove(buf,buf+i+bound_len,size-i-bound_len);
 			size-=i+bound_len;
 			++stage;
-			if(stage==4)
+			if(stage==3)
 			{
 				break;
 			}
@@ -555,14 +555,6 @@ void handle_post(void *sock,char *header)
 				break;
 			}
 			if(stage==1)
-			{
-				if(memcmp(buf+40,"PW\"",3))
-				{
-					ret=1;
-					break;
-				}
-			}
-			else if(stage==2)
 			{
 				if(memcmp(buf+40,"F\"",2))
 				{
@@ -604,19 +596,10 @@ void handle_post(void *sock,char *header)
 			}
 			if(stage==1)
 			{
-				if(upload_password[0]==0||size-i<=strlen(upload_password)||
-buf[i+strlen(upload_password)]!='\r'||memcmp(upload_password,buf+i,strlen(upload_password)))
-				{
-					ret=1;
-					break;
-				}
-			}
-			else if(stage==2)
-			{
 				memmove(buf,buf+i,size-i);
 				size-=i;
 			}
-			else if(stage==3)
+			else if(stage==2)
 			{
 				len=0;
 				while(i+len<size&&buf[i+len]!='\r')
