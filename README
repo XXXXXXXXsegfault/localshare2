@@ -1,6 +1,3 @@
-NOTE: This program does not use HTTPS. Do not enter passwords unless you
-are accessing it through local area network.
-
 This program can only run on x86_64 Windows.
 
 Building
