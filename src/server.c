@@ -689,6 +689,13 @@ void handle_post(void *sock,char *header)
 							i=ret;
 							while(read_size+ret<size&&buf[read_size+ret]!='\"')
 							{
+								if(buf[read_size+ret]=='/')
+								{
+									free(real_path);
+									free(tmp_file);
+									send_page_400(sock);
+									return;
+								}
 								++ret;
 							}
 							if(read_size+ret>=size||ret-i>=256)
