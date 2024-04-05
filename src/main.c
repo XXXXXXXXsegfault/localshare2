@@ -114,6 +114,27 @@ int sock_read(void *sock,void *buf,int size)
 	}
 	return ret;
 }
+int sock_read_nowait(void *sock,void *buf,int size)
+{
+	struct fd_set sfd;
+	long timeout[2];
+	int ret;
+	timeout[0]=0;
+	timeout[1]=0;
+	sfd.nfds=1;
+	sfd.pad=0;
+	sfd.sock[0]=sock;
+	if(select(1,&sfd,NULL,&sfd,timeout)!=1)
+	{
+		return 0;
+	}
+	ret=recv(sock,buf,size,0);
+	if(ret<0)
+	{
+		ret=0;
+	}
+	return ret;
+}
 int sock_write(void *sock,void *buf,int size)
 {
 	struct fd_set sfd;
@@ -157,7 +178,6 @@ void sock_clean(void *sock)
 		}
 	}
 }
-
 #include "server.c"
 void _T_service(void); // SCC uses a different calling convention
 asm "@_T_service"

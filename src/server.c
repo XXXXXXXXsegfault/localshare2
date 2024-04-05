@@ -94,23 +94,102 @@ int is_valid_char(char c)
 	}
 	return 0;
 }
-int is_valid_name(char *str)
+int strlen_encoded(char *str)
 {
 	char c;
+	int ret;
+	ret=0;
 	while(c=*str)
 	{
 		if(!is_valid_char(c))
 		{
-			return 0;
+			ret+=2;
 		}
+		ret+=1;
 		++str;
 	}
-	return 1;
+	return ret;
 }
-char *get_real_path(char *path,int pathlen,int *status)
+void url_encode(char *dst,char *src)
+{
+	char c;
+	char *hexc;
+	hexc="0123456789ABCDEF";
+	while(c=*src)
+	{
+		if(is_valid_char(c))
+		{
+			*dst=c;
+			++dst;
+		}
+		else
+		{
+			*dst='%';
+			dst[1]=hexc[c>>4&0xf];
+			dst[2]=hexc[c&0xf];
+			dst+=3;
+		}
+		++src;
+	}
+	*dst=0;
+}
+int hexdig_to_val(char hexdig)
+{
+	if(hexdig>='0'&&hexdig<='9')
+	{
+		return hexdig-'0';
+	}
+	else if(hexdig>='A'&&hexdig<='F')
+	{
+		return hexdig-'A'+10;
+	}
+	else if(hexdig>='a'&&hexdig<='f')
+	{
+		return hexdig-'a'+10;
+	}
+	else
+	{
+		return -1;
+	}
+}
+int decode_char(char *str,int *size)
+{
+	int ret,val;
+	*size=0;
+	if(is_valid_char(*str))
+	{
+		ret=*str&0xff;
+		*size=1;
+		return ret;
+	}
+	else if(*str=='%')
+	{
+		val=hexdig_to_val(str[1]);
+		if(val<0)
+		{
+			return -1;
+		}
+		ret=val<<4;
+		val=hexdig_to_val(str[2]);
+		if(val<0)
+		{
+			return -1;
+		}
+		ret|=val;
+		*size=3;
+		return ret;
+	}
+	else if(*str=='+')
+	{
+		*size=1;
+		return 32;
+	}
+	return -1;
+}
+char *get_real_path(char *path,int pathlen,int *status,int decode)
 {
 	char *real_path,*p;
-	int x,x1,i;
+	int x,x1,i,csize,cval;
 	char name[256];
 	if(pathlen<=0)
 	{
@@ -134,16 +213,35 @@ char *get_real_path(char *path,int pathlen,int *status)
 			++x;
 		}
 		x1=0;
-		while(x<pathlen&&path[x]&&path[x]!='/')
+		while(x<pathlen&&path[x])
 		{
-			name[x1]=path[x];
-			++x;
+			if(decode)
+			{
+				cval=decode_char(path+x,&csize);
+			}
+			else
+			{
+				cval=path[x];
+				csize=1;
+			}
+			if(cval<0||x1==0&&cval=='#')
+			{
+				free(real_path);
+				*status=1;
+				return NULL;
+			}
+			name[x1]=cval;
+			x+=csize;
 			++x1;
 			if(x1==256)
 			{
 				free(real_path);
 				*status=1;
 				return NULL;
+			}
+			if(cval=='/')
+			{
+				break;
 			}
 		}
 		name[x1]=0;
@@ -174,6 +272,7 @@ struct file_entry
 {
 	struct file_entry *next;
 	char name[768];
+	char encoded_name[768*3];
 	long isdir;
 };
 void release_file_entries(struct file_entry *entries)
@@ -190,7 +289,7 @@ void handle_get(void *sock,char *header)
 	int i,status;
 	char c;
 	char *real_path;
-	char *rpath;
+	char *rpath,*encoded_rpath;
 	char buf[4096];
 	void *fp;
 	long size;
@@ -200,7 +299,7 @@ void handle_get(void *sock,char *header)
 	i=4;
 	while(c=header[i])
 	{
-		if(!is_valid_char(c))
+		if(c==32)
 		{
 			if(i==4||strncmp(header+i," HTTP/1.",8))
 			{
@@ -211,7 +310,7 @@ void handle_get(void *sock,char *header)
 		}
 		++i;
 	}
-	real_path=get_real_path(header+4,i-4,&status);
+	real_path=get_real_path(header+4,i-4,&status,1);
 	if(real_path==NULL)
 	{
 		if(status==1)
@@ -225,6 +324,14 @@ void handle_get(void *sock,char *header)
 		return;
 	}
 	rpath=real_path+strlen(server_root);
+	encoded_rpath=malloc(strlen(rpath)*3+10);
+	if(encoded_rpath==NULL)
+	{
+		free(real_path);
+		send_page_500(sock);
+		return;
+	}
+	url_encode(encoded_rpath,rpath);
 	strcat(rpath,"/*");
 	if((fh=FindFirstFileA(real_path,&fdata))!=INVALID_HANDLE_VALUE)
 	{
@@ -247,7 +354,7 @@ void handle_get(void *sock,char *header)
 		}
 		do
 		{
-			if(strcmp(fdata.name,".")&&strcmp(fdata.name,"..")&&is_valid_name(fdata.name))
+			if(strcmp(fdata.name,".")&&strcmp(fdata.name,"..")&&fdata.name[0]!='#')
 			{
 				node=malloc(sizeof(*node));
 				if(node==NULL)
@@ -255,16 +362,18 @@ void handle_get(void *sock,char *header)
 					release_file_entries(head);
 					FindClose(fh);
 					free(real_path);
+					free(encoded_rpath);
 					send_page_500(sock);
 					return;
 				}
 				strcpy(node->name,fdata.name);
+				url_encode(node->encoded_name,fdata.name);
 				node->isdir=fdata.attr&FILE_ATTRIBUTE_DIRECTORY;
 				p=head;
 				pp=NULL;
 				while(p)
 				{
-					if(strcmp(p->name,fdata.name)>0)
+					if(strcmp(p->name,node->name)>0)
 					{
 						break;
 					}
@@ -280,7 +389,7 @@ void handle_get(void *sock,char *header)
 					head=node;
 				}
 				node->next=p;
-				size+=31+2*strlen(fdata.name)+strlen(rpath);
+				size+=31+strlen(fdata.name)+strlen_encoded(fdata.name)+strlen_encoded(rpath);
 				if(rpath[1]==0)
 				{
 					--size;
@@ -305,7 +414,7 @@ Upload To <input type=\"text\" name=\"FP\"/><br/>\
 <input type=\"submit\" name=\"SM\" value=\"Upload\"/><br/></form>\n\
 <p><a href=\"");
 		sock_write(sock,buf,strlen(buf));
-		sock_write(sock,rpath,strlen(rpath));
+		sock_write(sock,encoded_rpath,strlen(encoded_rpath));
 		if(rpath[1])
 		{
 			sock_write(sock,"/",1);
@@ -329,7 +438,7 @@ Upload To <input type=\"text\" name=\"FP\"/><br/>\
 			{
 				sock_write(sock,"/",1);
 			}
-			sock_write(sock,p->name,strlen(p->name));
+			sock_write(sock,p->encoded_name,strlen(p->encoded_name));
 			sock_write(sock,"\">",2);
 			sock_write(sock,p->name,strlen(p->name));
 			strcpy(buf,"</a></p>\n");
@@ -378,6 +487,7 @@ Upload To <input type=\"text\" name=\"FP\"/><br/>\
 		}
 	}
 	free(real_path);
+	free(encoded_rpath);
 }
 int mem_match(void *data,int datalen,void *target,int targetlen)
 {
@@ -483,7 +593,6 @@ void handle_post(void *sock,char *header)
 	stage=0;
 	size=0;
 	read_size=0;
-	send_page_302(sock);
 	while(1)
 	{
 		memmove(buf,buf+read_size,size-read_size);
@@ -491,7 +600,7 @@ void handle_post(void *sock,char *header)
 		read_size=0;
 		do
 		{
-			ret=sock_read(sock,buf+size,8192-size);
+			ret=sock_read_nowait(sock,buf+size,8192-size);
 			if(ret<0)
 			{
 				ret=0;
@@ -613,7 +722,7 @@ void handle_post(void *sock,char *header)
 					send_page_400(sock);
 					return;
 				}
-				real_path=get_real_path(buf+read_size+i,ret-i,&status);
+				real_path=get_real_path(buf+read_size+i,ret-i,&status,0);
 				if(real_path==NULL)
 				{
 					free(tmp_file);
@@ -673,6 +782,8 @@ void handle_post(void *sock,char *header)
 							{
 								free(real_path);
 								free(tmp_file);
+								send_page_302(sock);
+								sock_clean(sock);
 								return;
 							}
 						}
@@ -787,10 +898,6 @@ int T_service(void *sock)
 		{
 			send_page_500(sock);
 		}
-		if(status!=3)
-		{
-			sock_clean(sock);
-		}
 		closesocket(sock);
 		return 0;
 	}
@@ -807,7 +914,6 @@ int T_service(void *sock)
 		send_page_400(sock);
 	}
 	free(header);
-	sock_clean(sock);
 	closesocket(sock);
 	return 0;
 }
