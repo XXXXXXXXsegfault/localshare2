@@ -119,7 +119,7 @@ int sock_read_nowait(void *sock,void *buf,int size)
 	struct fd_set sfd;
 	long timeout[2];
 	int ret;
-	timeout[0]=0;
+	timeout[0]=3;
 	timeout[1]=0;
 	sfd.nfds=1;
 	sfd.pad=0;
