@@ -224,7 +224,7 @@ char *get_real_path(char *path,int pathlen,int *status,int decode)
 				cval=path[x];
 				csize=1;
 			}
-			if(cval<0||x1==0&&cval=='#')
+			if(cval<0||x1==0&&cval=='#'||cval=='\\')
 			{
 				free(real_path);
 				*status=1;
@@ -338,7 +338,7 @@ void handle_get(void *sock,char *header)
 //<html><head><title>[LocalShare] ...</title></head>\n
 //<body><h1>[LocalShare] ...</h1>\n
 //<form action="/$PUTF" enctype="multipart/form-data" method="post">\n
-//Upload To <input type="text" name="FP"/><br/><input type="file" name="F" multiple/><br/><input type="submit" name="SM" value="Upload"/><br/></form>\n
+//Upload To (Directory) <input type="text" name="FP"/><br/><input type="file" name="F" multiple/><br/><input type="submit" name="SM" value="Upload"/><br/></form>\n
 //<p><a href=".../..">PARENT</a></p>\n
 //...
 //</body></html>\n
@@ -347,7 +347,7 @@ void handle_get(void *sock,char *header)
 //<p>[DIR ] <a href=".../dir">dir</a></p>\n
 		head=NULL;
 		rpath[strlen(rpath)-2]=0;
-		size=48+29+67+148+32+15+3*strlen(rpath);
+		size=48+29+67+160+32+15+3*strlen(rpath);
 		if(rpath[1]==0)
 		{
 			--size;
@@ -409,7 +409,7 @@ void handle_get(void *sock,char *header)
 		sock_write(sock,buf,strlen(buf));
 		sock_write(sock,rpath,strlen(rpath));
 		strcpy(buf,"</h1>\n<form action=\"/$PUTF\" enctype=\"multipart/form-data\" method=\"post\">\n\
-Upload To <input type=\"text\" name=\"FP\"/><br/>\
+Upload To (Directory) <input type=\"text\" name=\"FP\"/><br/>\
 <input type=\"file\" name=\"F\" multiple/><br/>\
 <input type=\"submit\" name=\"SM\" value=\"Upload\"/><br/></form>\n\
 <p><a href=\"");
@@ -506,6 +506,26 @@ int mem_match(void *data,int datalen,void *target,int targetlen)
 	}
 	return -1;
 }
+int boundary_end(void *data,int datalen,void *target,int targetlen)
+{
+	int i;
+	i=0;
+	while(i<=datalen-targetlen-2)
+	{
+		if(((char *)data)[i]==*(char *)target)
+		{
+			if(!memcmp((char *)data+i,target,targetlen))
+			{
+				if(!memcmp((char *)data+i+targetlen,"--",2))
+				{
+					return 1;
+				}
+			}
+		}
+		++i;
+	}
+	return 0;
+}
 char *get_tmp_file(void)
 {
 	char *name;
@@ -552,7 +572,7 @@ void handle_post(void *sock,char *header)
 	char *real_path;
 	char *tmp_file;
 	char buf[8192];
-	int i,bound_len,status,stage,size,read_size,ret,path_len;
+	int i,bound_len,status,stage,size,read_size,ret,path_len,connection_close;
 	void *fp;
 	if(strncmp(header+5,"/$PUTF HTTP/1.",14))
 	{
@@ -587,35 +607,43 @@ void handle_post(void *sock,char *header)
 	tmp_file=get_tmp_file();
 	if(tmp_file==NULL)
 	{
-		send_page_500(sock);
+		send_page_400(sock);
 		return;
 	}
 	stage=0;
 	size=0;
 	read_size=0;
+	connection_close=0;
 	while(1)
 	{
 		memmove(buf,buf+read_size,size-read_size);
 		size-=read_size;
 		read_size=0;
-		do
+		if(!connection_close)
 		{
-			ret=sock_read_nowait(sock,buf+size,8192-size);
-			if(ret<0)
+			do
 			{
-				ret=0;
+				ret=sock_read(sock,buf+size,8192-size);
+				if(ret<0)
+				{
+					ret=0;
+				}
+				size+=ret;
+				if(mem_match(buf,size,bound,bound_len)>=0)
+				{
+					break;
+				}
 			}
-			size+=ret;
-			if(mem_match(buf+read_size,size-read_size,bound,bound_len)>=0)
+			while(size<8192&&ret);
+			if(boundary_end(buf,size,bound,bound_len))
 			{
-				break;
+				connection_close=1;
 			}
 		}
-		while(size<8192&&ret);
-		ret=mem_match(buf+read_size,size-read_size,bound,bound_len);
+		ret=mem_match(buf,size,bound,bound_len);
 		if(ret<0)
 		{
-			if(stage!=2||size<read_size+4+bound_len)
+			if(stage!=2||size<4+bound_len)
 			{
 				if(stage==1)
 				{
@@ -631,8 +659,8 @@ void handle_post(void *sock,char *header)
 				send_page_400(sock);
 				return;
 			}
-			i=fwrite(buf+read_size,1,size-read_size-4-bound_len,fp);
-			if(i!=size-read_size-4-bound_len)
+			i=fwrite(buf+read_size,1,size-4-bound_len,fp);
+			if(i!=size-4-bound_len)
 			{
 				fclose(fp);
 				remove(tmp_file);
@@ -641,7 +669,7 @@ void handle_post(void *sock,char *header)
 				send_page_500(sock);
 				return;
 			}
-			read_size+=size-read_size-4-bound_len;
+			read_size=size-4-bound_len;
 		}
 		else
 		{
@@ -654,7 +682,7 @@ void handle_post(void *sock,char *header)
 					return;
 				}
 				ret+=bound_len+2;
-				if(memcmp(buf+read_size+ret,"Content-Disposition: form-data; ",32))
+				if(memcmp(buf+ret,"Content-Disposition: form-data; ",32))
 				{
 					free(tmp_file);
 					send_page_400(sock);
@@ -663,17 +691,17 @@ void handle_post(void *sock,char *header)
 				ret+=32;
 				while(1)
 				{
-					if(read_size+ret+9>=size||buf[read_size+ret]=='\n')
+					if(ret+9>=size||buf[ret]=='\n')
 					{
 						free(tmp_file);
 						send_page_400(sock);
 						return;
 					}
-					if(buf[read_size+ret]=='n')
+					if(buf[ret]=='n')
 					{
-						if(!memcmp(buf+read_size+ret,"name=\"",6))
+						if(!memcmp(buf+ret,"name=\"",6))
 						{
-							if(!memcmp(buf+read_size+ret+6,"FP\"",3))
+							if(!memcmp(buf+ret+6,"FP\"",3))
 							{
 								break;
 							}
@@ -689,15 +717,15 @@ void handle_post(void *sock,char *header)
 				}
 				while(1)
 				{
-					if(read_size+ret+3>=size)
+					if(ret+3>=size)
 					{
 						free(tmp_file);
 						send_page_400(sock);
 						return;
 					}
-					if(buf[read_size+ret]=='\n')
+					if(buf[ret]=='\n')
 					{
-						if(!memcmp(buf+read_size+ret,"\n\r\n",3))
+						if(!memcmp(buf+ret,"\n\r\n",3))
 						{
 							break;
 						}
@@ -706,7 +734,7 @@ void handle_post(void *sock,char *header)
 				}
 				ret+=3;
 				i=ret;
-				while(read_size+ret<size&&buf[read_size+ret]!='\r')
+				while(ret<size&&buf[ret]!='\r')
 				{
 					++ret;
 					if(i+1024<ret)
@@ -716,13 +744,13 @@ void handle_post(void *sock,char *header)
 						return;
 					}
 				}
-				if(read_size+ret+2>=size)
+				if(ret+2>=size)
 				{
 					free(tmp_file);
 					send_page_400(sock);
 					return;
 				}
-				real_path=get_real_path(buf+read_size+i,ret-i,&status,0);
+				real_path=get_real_path(buf+i,ret-i,&status,0);
 				if(real_path==NULL)
 				{
 					free(tmp_file);
@@ -739,7 +767,7 @@ void handle_post(void *sock,char *header)
 				CreateDirectoryA(real_path,NULL);
 				path_len=strlen(real_path);
 				ret+=2;
-				read_size+=ret;
+				read_size=ret;
 				stage=1;
 			}
 			else if(stage==1)
@@ -752,7 +780,7 @@ void handle_post(void *sock,char *header)
 					return;
 				}
 				ret+=bound_len+2;
-				if(memcmp(buf+read_size+ret,"Content-Disposition: form-data; ",32))
+				if(memcmp(buf+ret,"Content-Disposition: form-data; ",32))
 				{
 					free(real_path);
 					free(tmp_file);
@@ -763,18 +791,18 @@ void handle_post(void *sock,char *header)
 				i=ret;
 				while(1)
 				{
-					if(read_size+ret+8>=size||buf[read_size+ret]=='\n')
+					if(ret+8>=size||buf[ret]=='\n')
 					{
 						free(real_path);
 						free(tmp_file);
 						send_page_400(sock);
 						return;
 					}
-					if(buf[read_size+ret]=='n')
+					if(buf[ret]=='n')
 					{
-						if(!memcmp(buf+read_size+ret,"name=\"",6))
+						if(!memcmp(buf+ret,"name=\"",6))
 						{
-							if(!memcmp(buf+read_size+ret+6,"F\"",2))
+							if(!memcmp(buf+ret+6,"F\"",2))
 							{
 								break;
 							}
@@ -783,7 +811,6 @@ void handle_post(void *sock,char *header)
 								free(real_path);
 								free(tmp_file);
 								send_page_302(sock);
-								sock_clean(sock);
 								return;
 							}
 						}
@@ -793,22 +820,22 @@ void handle_post(void *sock,char *header)
 				ret=i;
 				while(1)
 				{
-					if(read_size+ret+10>=size||buf[read_size+ret]=='\n')
+					if(ret+10>=size||buf[ret]=='\n')
 					{
 						free(real_path);
 						free(tmp_file);
 						send_page_400(sock);
 						return;
 					}
-					if(buf[read_size+ret]=='f')
+					if(buf[ret]=='f')
 					{
-						if(!memcmp(buf+read_size+ret,"filename=\"",10))
+						if(!memcmp(buf+ret,"filename=\"",10))
 						{
 							ret+=10;
 							i=ret;
-							while(read_size+ret<size&&buf[read_size+ret]!='\"')
+							while(ret<size&&buf[ret]!='\"')
 							{
-								if(buf[read_size+ret]=='/')
+								if(buf[ret]=='/'||buf[ret]=='\\')
 								{
 									free(real_path);
 									free(tmp_file);
@@ -817,18 +844,18 @@ void handle_post(void *sock,char *header)
 								}
 								++ret;
 							}
-							if(read_size+ret>=size||ret-i>=256)
+							if(ret>=size||ret-i>=256)
 							{
 								free(real_path);
 								free(tmp_file);
 								send_page_400(sock);
 								return;	
 							}
-							buf[read_size+ret]=0;
+							buf[ret]=0;
 							++ret;
 							real_path[path_len]='/';
 							real_path[path_len+1]=0;
-							strcat(real_path,buf+read_size+i);
+							strcat(real_path,buf+i);
 							break;
 						}
 					}
@@ -836,15 +863,15 @@ void handle_post(void *sock,char *header)
 				}
 				while(1)
 				{
-					if(read_size+ret+3>=size)
+					if(ret+3>=size)
 					{
 						free(tmp_file);
 						send_page_400(sock);
 						return;
 					}
-					if(buf[read_size+ret]=='\n')
+					if(buf[ret]=='\n')
 					{
-						if(!memcmp(buf+read_size+ret,"\n\r\n",3))
+						if(!memcmp(buf+ret,"\n\r\n",3))
 						{
 							break;
 						}
@@ -852,7 +879,7 @@ void handle_post(void *sock,char *header)
 					++ret;
 				}
 				ret+=3;
-				read_size+=ret;
+				read_size=ret;
 				fp=fopen(tmp_file,"wb");
 				if(fp==NULL)
 				{
@@ -865,7 +892,7 @@ void handle_post(void *sock,char *header)
 			}
 			else if(stage==2)
 			{
-				i=fwrite(buf+read_size,1,ret-4,fp);
+				i=fwrite(buf,1,ret-4,fp);
 				fclose(fp);
 				if(i!=ret-4)
 				{
@@ -878,7 +905,7 @@ void handle_post(void *sock,char *header)
 				remove(real_path);
 				rename(tmp_file,real_path);
 				stage=1;
-				read_size+=ret-2;
+				read_size=ret-2;
 			}
 		}
 	}
