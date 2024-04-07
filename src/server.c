@@ -208,9 +208,25 @@ char *get_real_path(char *path,int pathlen,int *status,int decode)
 	x=0;
 	while(x<pathlen)
 	{
-		while(x<pathlen&&path[x]=='/')
+		while(x<pathlen)
 		{
-			++x;
+			if(decode)
+			{
+				cval=decode_char(path+x,&csize);
+			}
+			else
+			{
+				cval=path[x];
+				csize=1;
+			}
+			if(cval=='/')
+			{
+				x+=csize;
+			}
+			else
+			{
+				break;
+			}
 		}
 		x1=0;
 		while(x<pathlen&&path[x])
@@ -241,6 +257,8 @@ char *get_real_path(char *path,int pathlen,int *status,int decode)
 			}
 			if(cval=='/')
 			{
+				--x1;
+				name[x1]=0;
 				break;
 			}
 		}
