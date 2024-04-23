@@ -1,14 +1,26 @@
 #include "windef.c"
 asm ".cui"
 asm ".entry"
-asm "push %rbp"
-asm "mov %rsp,%rbp"
-asm "and $0xf0,%spl"
-asm "call @__init"
-asm "mov %rbp,%rsp"
-asm "pop %rbp"
-asm "ret"
+int main(void);
 int WSAStartup(int ver,void *wsadata);
+int WSACleanup(void);
+void _exit(int code);
+void exit(int code);
+int __init(void)
+{
+	int argc;
+	char **argv;
+	int ret;
+	unsigned char buf2[1024];
+	if(WSAStartup(0x1,buf2))
+	{
+		_exit(-1);
+	}
+	argc=0;
+	argv=NULL;
+	ret=main();
+	exit(ret);
+}
 asm "@WSAStartup"
 asm "push %rbp"
 asm "mov %rsp,%rbp"
@@ -19,9 +31,7 @@ asm "push %r10"
 asm "push %r11"
 asm "mov 16(%rbp),%rcx"
 asm "mov 24(%rbp),%rdx"
-asm "sub $16,%rsp"
-asm "push %rdx"
-asm "push %rcx"
+asm "sub $32,%rsp"
 asm ".dllcall \"ws2_32.dll\" \"WSAStartup\""
 asm "add $32,%rsp"
 asm "pop %r11"
@@ -31,7 +41,7 @@ asm "pop %r8"
 asm "mov %rbp,%rsp"
 asm "pop %rbp"
 asm "ret"
-int WSACleanup(void);
+
 asm "@WSACleanup"
 asm "push %rbp"
 asm "mov %rsp,%rbp"
@@ -50,73 +60,7 @@ asm "pop %r8"
 asm "mov %rbp,%rsp"
 asm "pop %rbp"
 asm "ret"
-int __getmainargs(int *argc,char ***argv);
-asm "@__getmainargs"
-asm "push %rbp"
-asm "mov %rsp,%rbp"
-asm "and $0xf0,%spl"
-asm "push %r8"
-asm "push %r9"
-asm "push %r10"
-asm "push %r11"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "pushq $0"
-asm "mov 16(%rbp),%rcx"
-asm "mov 24(%rbp),%rdx"
-asm "xor %r8d,%r8d"
-asm "mov $1,%r9d"
-asm "push %r8"
-asm "lea 8(%rsp),%r8"
-asm "push %r8"
-asm "push %r9"
-asm "lea 16(%rsp),%r8"
-asm "push %r8"
-asm "push %rdx"
-asm "push %rcx"
-asm ".dllcall \"msvcrt.dll\" \"__getmainargs\""
-asm "add $48,%rsp"
-asm "add $256,%rsp"
-asm "pop %r11"
-asm "pop %r10"
-asm "pop %r9"
-asm "pop %r8"
-asm "mov %rbp,%rsp"
-asm "pop %rbp"
-asm "ret"
-int _main(int argc,char **argv,void *hInstance);
-asm "@_main"
-asm "jmp @main"
-void _exit(int code);
+
 asm "@_exit"
 asm "push %rbp"
 asm "mov %rsp,%rbp"
@@ -142,23 +86,7 @@ void exit(int code)
 	WSACleanup();
 	_exit(code);
 }
-int __init(void)
-{
-	int argc;
-	char **argv;
-	int ret;
-	unsigned char buf[1024];
-	if(WSAStartup(0x1,buf))
-	{
-		_exit(-1);
-	}
-	if(__getmainargs(&argc,&argv))
-	{
-		exit(-1);
-	}
-	ret=_main(argc,argv,(void *)0x400000);
-	exit(ret);
-}
+
 void puts(char *str);
 asm "@puts"
 asm "push %rbp"
