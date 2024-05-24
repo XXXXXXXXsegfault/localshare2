@@ -1,0 +1,2 @@
+This program can only run on x86_64 Windows.
+To build this program, run ./build.sh in Cygwin64 Terminal.
