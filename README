@@ -1,9 +1,0 @@
-This program can only run on x86_64 Windows.
-
-Building
-
-To build this program, simply run build.cmd. You can run clean.cmd to
-delete generated files.
-Note that this program uses my SCC compiler to build this program.
-You can view source files of SCC at
-https://github.com/XXXXXXXXsegfault/scc_64.
