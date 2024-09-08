@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../include/iformat.c"
+int _fseeki64(FILE *,long long pos,int orig);
+long long _ftelli64(FILE *);
 int rand_s(unsigned int *val);
 char server_root[16384];
 SOCKET server_sock;

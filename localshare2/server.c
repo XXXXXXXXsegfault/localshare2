@@ -328,7 +328,7 @@ void handle_get(SOCKET sock,char *header)
 	char *rpath,*encoded_rpath;
 	char buf[4096];
 	FILE *fp;
-	long size;
+	long long size;
 	HANDLE fh;
 	WIN32_FIND_DATAA fdata;
 	struct file_entry *head,*node,*p,*pp;
@@ -497,9 +497,9 @@ Upload To (Directory) <input type=\"text\" name=\"FP\"/><br/>\
 		rpath[strlen(rpath)-2]=0;
 		if(fp=fopen(real_path,"rb"))
 		{
-			fseek(fp,0,2);
-			size=ftell(fp);
-			fseek(fp,0,0);
+			_fseeki64(fp,0,SEEK_END);
+			size=_ftelli64(fp);
+			_fseeki64(fp,0,SEEK_SET);
 			strcpy(buf,"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nConnection: close\r\nContent-Length: ");
 			sprinti(buf,size,1);
 			strcat(buf,"\r\n\r\n");
